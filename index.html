@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Countdown to New Year (KST) — For 윤아</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg1:#03021a;
+      --bg2:#1b0433;
+      --accent:#ff7aa2;
+      --muted:#e9dff0;
+      --glass: rgba(255,255,255,0.03);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;font-family:'Poppins',system-ui,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,var(--bg1),var(--bg2));color:var(--muted);-webkit-font-smoothing:antialiased}
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
+    .card{width:100%;max-width:820px;background:transparent;text-align:center}
+    h1{margin:0;font-size:30px;color:var(--accent)}
+    .sub{margin-top:8px;opacity:0.9}
+    .count{margin-top:28px;font-size:64px;font-weight:700;letter-spacing:1px}
+    .kst{margin-top:10px;opacity:0.9;font-size:14px}
+    .controls{margin-top:18px;display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+    .btn{padding:10px 18px;border-radius:10px;border:0;cursor:pointer;font-weight:600}
+    .btn-primary{background:linear-gradient(90deg,var(--accent),#ff9fc0);color:#200018}
+    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.08);color:var(--muted)}
+    .btn-hidden{display:none}
+    .overlay{
+      position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:40;
+      opacity:0;pointer-events:none;transition:opacity .5s ease;
+      flex-direction:column;padding:28px;text-align:center;color:#fff;
+    }
+    .overlay.show{opacity:1;pointer-events:auto}
+    .wishes{max-width:920px;padding:16px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border:1px solid rgba(255,255,255,0.04)}
+    .word{opacity:0;display:inline-block;transform:translateY(6px);transition:opacity .28s ease, transform .28s ease;margin-right:6px}
+    .word.visible{opacity:1;transform:translateY(0)}
+    .para{margin:12px 0}
+    canvas#fireworks{position:fixed;inset:0;z-index:30;pointer-events:none;background:transparent}
+    @media (max-width:520px){ .count{font-size:42px} .word{font-size:16px} h1{font-size:22px} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card" role="main" aria-live="polite">
+      <h1>Countdown to New Year!</h1>
+      <div class="sub">When midnight strikes, let's welcome the New Year together!</div>
+
+      <div class="count" id="countdown">--:--:--</div>
+      <div class="kst" id="kstNow">KST: —</div>
+
+      <div class="controls">
+        <!-- This button is hidden until KST midnight -->
+        <button id="greetBtn" class="btn btn-primary btn-hidden" aria-hidden="true">Let's welcome the New Year!</button>
+        <!-- Replay button (hidden until wishes finish) -->
+        <button id="replayBtn" class="btn btn-ghost btn-hidden" title="Watch wishes again">Watch wishes again</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay" class="overlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="wishes" id="wishesContainer" aria-live="polite"></div>
+    <button id="startFireBtn" class="btn btn-primary btn-hidden" style="margin-top:22px">Start fireworks</button>
+  </div>
+
+  <canvas id="fireworks" aria-hidden="true"></canvas>
+
+  <!-- Background music file (optional). Place music.mp3 next to this HTML if you want music.
+       It will be started automatically when wishes begin (on user interaction). -->
+  <audio id="bgMusic" src="music.mp3" loop preload="auto"></audio>
+
+  <script>
+    // ---------- Configuration & DOM ----------
+    const KST_OFFSET_MS = 9 * 3600 * 1000;
+    const WISHES_PARAGRAPHS = [
+`Happy New Year, my love 🌙✨`,
+
+`As this new year begins, I look up at the same moon that watches over you, and I feel how deeply connected we are — no matter the distance. You are my constant star, the light that guides me even through the darkest nights.`,
+
+`Time passes so quickly, and every day brings us closer to the moment we’ll finally meet. I can’t wait for the day when distance is no longer between us, when I can look into your eyes instead of the sky and hold you instead of missing you.`,
+
+`Thank you for this past year — for every message, every smile, every moment we shared. I’m so grateful for us. And I know this is only the beginning. Another year awaits us… and another… and another — all leading us toward a future we will build together.`,
+
+`Meeting you on Slowly feels like destiny. I never expected that sending that letter would change my life so completely, but now I can’t imagine my world without you. You are my greatest happiness, the most beautiful surprise the universe could have given me.`,
+
+`I love you more than words can ever fully express. I can’t wait for our shared future — for the life we’ll create side by side, step by step, dream by dream. No matter how long the journey takes, my heart is yours, and only yours. Zawsze tam gdzie Ty!`,
+
+`I love you endlessly ❤️`
+    ];
+
+    const countdownEl = document.getElementById('countdown');
+    const kstNowEl = document.getElementById('kstNow');
+    const greetBtn = document.getElementById('greetBtn');
+    const replayBtn = document.getElementById('replayBtn');
+    const overlay = document.getElementById('overlay');
+    const wishesContainer = document.getElementById('wishesContainer');
+    const startFireBtn = document.getElementById('startFireBtn');
+    const canvas = document.getElementById('fireworks');
+    const ctx = canvas.getContext('2d');
+    const bgMusic = document.getElementById('bgMusic');
+
+    // ---------- KST helpers ----------
+    function nowMs(){ return Date.now(); }
+    function kstNowDate(){ return new Date(Date.now() + KST_OFFSET_MS); }
+    function getNextKstNewYearTimestamp(){
+      const now = Date.now();
+      const kst = new Date(now + KST_OFFSET_MS);
+      const year = kst.getUTCFullYear();
+      const candidateUTCms = Date.UTC(year,0,1,0,0,0) - KST_OFFSET_MS;
+      if(now < candidateUTCms) return candidateUTCms;
+      return Date.UTC(year+1,0,1,0,0,0) - KST_OFFSET_MS;
+    }
+    let newYearTs = getNextKstNewYearTimestamp();
+
+    // ---------- Countdown UI ----------
+    function formatHMS(totalSec){
+      const h = Math.floor(totalSec/3600);
+      const m = Math.floor((totalSec%3600)/60);
+      const s = totalSec%60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
+    function updateUI(){
+      const now = nowMs();
+      const diff = Math.max(0, newYearTs - now);
+      const totalSec = Math.floor(diff/1000);
+      countdownEl.textContent = formatHMS(totalSec);
+      const k = kstNowDate();
+      kstNowEl.textContent = `KST: ${k.getUTCFullYear()}-${String(k.getUTCMonth()+1).padStart(2,'0')}-${String(k.getUTCDate()).padStart(2,'0')} ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}:${String(k.getUTCSeconds()).padStart(2,'0')}`;
+      if(diff <= 0){
+        greetBtn.classList.remove('btn-hidden');
+        greetBtn.removeAttribute('aria-hidden');
+        countdownEl.textContent = "00:00:00";
+      }
+    }
+    setInterval(updateUI, 250);
+    updateUI();
+
+    // ---------- Wishes: word-by-word (slower) ----------
+    let wishesRunning = false;
+    async function startWishesWordByWord(autoAskFireworks = false){
+      if(wishesRunning) return;
+      wishesRunning = true;
+
+      // try to start music on user interaction (greet/replay)
+      try { await bgMusic.play(); } catch(e) { /* ignore if blocked */ }
+
+      greetBtn.classList.add('btn-hidden');
+      greetBtn.setAttribute('aria-hidden','true');
+      replayBtn.classList.add('btn-hidden');
+
+      overlay.classList.add('show');
+      overlay.setAttribute('aria-hidden','false');
+
+      wishesContainer.innerHTML = '';
+      const paraEls = WISHES_PARAGRAPHS.map(() => {
+        const d = document.createElement('div');
+        d.className = 'para';
+        wishesContainer.appendChild(d);
+        return d;
+      });
+
+      const WORD_DELAY = 420; // slower
+      const PARAGRAPH_PAUSE = 900;
+
+      for(let pi=0; pi<WISHES_PARAGRAPHS.length; pi++){
+        const paragraph = WISHES_PARAGRAPHS[pi];
+        const words = paragraph.split(/\s+/).filter(Boolean);
+        const container = paraEls[pi];
+        for(let wi=0; wi<words.length; wi++){
+          const w = words[wi];
+          const span = document.createElement('span');
+          span.className = 'word';
+          span.textContent = w;
+          container.appendChild(span);
+          container.appendChild(document.createTextNode(' '));
+          await new Promise(r => setTimeout(r, WORD_DELAY));
+          span.classList.add('visible');
+        }
+        await new Promise(r => setTimeout(r, PARAGRAPH_PAUSE));
+      }
+
+      // reveal Start fireworks and replay buttons after finishing
+      startFireBtn.classList.remove('btn-hidden');
+      replayBtn.classList.remove('btn-hidden');
+
+      wishesRunning = false;
+
+      if(autoAskFireworks){
+        setTimeout(()=> {
+          const ok = confirm('Wishes finished. Start fireworks now (test)?');
+          if(ok) startFireBtn.click();
+        }, 700);
+      }
+    }
+
+    // greet button available at midnight
+    greetBtn.addEventListener('click', () => startWishesWordByWord(false));
+    replayBtn.addEventListener('click', () => startWishesWordByWord(false));
+
+    // ---------- Fireworks ----------
+    function resizeCanvas(){ canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    const rockets = [];
+    const particles = [];
+    const GRAVITY = 0.06;
+    function rand(min,max){ return Math.random()*(max-min)+min; }
+
+    class Rocket {
+      constructor(x, y, vx, vy, hue){
+        this.x = x; this.y = y; this.vx = vx; this.vy = vy; this.hue = hue; this.alive = true;
+      }
+      step(){
+        this.vy += GRAVITY*0.15;
+        this.x += this.vx; this.y += this.vy;
+        if(this.vy > 0 || Math.random() < 0.004){
+          this.explode();
+          this.alive = false;
+        }
+      }
+      explode(){
+        const count = 30 + Math.floor(Math.random()*40);
+        for(let i=0;i<count;i++){
+          const angle = Math.random()*Math.PI*2;
+          const speed = rand(1.6,5.6);
+          particles.push(new Particle(this.x, this.y, Math.cos(angle)*speed, Math.sin(angle)*speed, this.hue + rand(-40,40)));
+        }
+      }
+      draw(c){
+        c.save();
+        c.beginPath();
+        c.fillStyle = `hsl(${this.hue},90%,60%)`;
+        c.shadowColor = `hsl(${this.hue},90%,70%)`;
+        c.shadowBlur = 8;
+        c.arc(this.x, this.y, 3, 0, Math.PI*2);
+        c.fill();
+        c.restore();
+      }
+    }
+
+    class Particle {
+      constructor(x,y,vx,vy,hue){
+        this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.hue=hue; this.alpha=1; this.decay = rand(0.007,0.02);
+      }
+      step(){
+        this.vy += GRAVITY*0.6;
+        this.vx *= 0.99; this.vy *= 0.99;
+        this.x += this.vx; this.y += this.vy;
+        this.alpha -= this.decay;
+      }
+      draw(c){
+        if(this.alpha <= 0) return;
+        c.save();
+        c.globalAlpha = Math.max(0, this.alpha);
+        c.beginPath();
+        c.fillStyle = `hsl(${this.hue},100%,60%)`;
+        c.shadowColor = `hsl(${this.hue},100%,70%)`;
+        c.shadowBlur = 12;
+        c.arc(this.x, this.y, 2.5, 0, Math.PI*2);
+        c.fill();
+        c.restore();
+      }
+    }
+
+    let animRunning = false;
+    function clearCanvas(){
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.globalCompositeOperation = 'lighter';
+    }
+
+    function frameLoop(){
+      if(!animRunning) return;
+      clearCanvas();
+      if(Math.random() < 0.08){
+        const x = rand(80, canvas.width-80);
+        rockets.push(new Rocket(x, canvas.height+10, rand(-1.2,1.2), rand(-9,-13), Math.floor(rand(0,360))));
+      }
+      for(let i=rockets.length-1;i>=0;i--){
+        const r = rockets[i];
+        r.step();
+        r.draw(ctx);
+        if(!r.alive) rockets.splice(i,1);
+      }
+      for(let i=particles.length-1;i>=0;i--){
+        const p = particles[i];
+        p.step();
+        if(p.alpha <= 0.01) particles.splice(i,1);
+        else p.draw(ctx);
+      }
+      requestAnimationFrame(frameLoop);
+    }
+
+    function startFireworks(){
+      if(animRunning) return;
+      animRunning = true;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      frameLoop();
+      playChimeSequence();
+      setTimeout(()=> stopFireworks(), 18000);
+    }
+    function stopFireworks(){
+      animRunning = false;
+      rockets.length = 0; particles.length = 0;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+    }
+
+    startFireBtn.addEventListener('click', ()=>{
+      overlay.classList.remove('show');
+      overlay.setAttribute('aria-hidden','true');
+      startFireworks();
+    });
+
+    function playChimeSequence(){
+      try{
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioCtx.currentTime;
+        const notes = [880,1046,1318];
+        notes.forEach((n,i)=>{
+          const o = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(n, now + i*0.22);
+          g.gain.setValueAtTime(0, now + i*0.22);
+          g.gain.linearRampToValueAtTime(0.12, now + i*0.22 + 0.01);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + i*0.22 + 0.9);
+          o.connect(g); g.connect(audioCtx.destination);
+          o.start(now + i*0.22); o.stop(now + i*0.22 + 1.1);
+        });
+      }catch(e){}
+    }
+
+    // accessibility
+    greetBtn.addEventListener('keydown', (ev)=>{
+      if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); greetBtn.click(); }
+    });
+
+    // canvas sizing
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  </script>
+</body>
+</html>
