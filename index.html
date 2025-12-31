@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Countdown to New Year (KST) — For 윤아</title>
+  <title>Happy New Year!</title>
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
   <style>
     :root{
@@ -43,15 +43,15 @@
 <body>
   <div class="wrap">
     <div class="card" role="main" aria-live="polite">
-      <h1>Countdown to New Year!</h1>
-      <div class="sub">When midnight strikes, let's welcome the New Year together!</div>
+      <h1>Countdown to New Year</h1>
+      <div class="sub">Korean Standard Time — when midnight strikes there, let's welcome the New Year together</div>
 
       <div class="count" id="countdown">--:--:--</div>
       <div class="kst" id="kstNow">KST: —</div>
 
       <div class="controls">
-        <!-- This button is hidden until KST midnight -->
-        <button id="greetBtn" class="btn btn-primary btn-hidden" aria-hidden="true">Let's welcome the New Year!</button>
+        <!-- Button is now always visible per request -->
+        <button id="greetBtn" class="btn btn-primary" aria-hidden="false">Let's welcome the New Year!</button>
         <!-- Replay button (hidden until wishes finish) -->
         <button id="replayBtn" class="btn btn-ghost btn-hidden" title="Watch wishes again">Watch wishes again</button>
       </div>
@@ -126,9 +126,8 @@
       countdownEl.textContent = formatHMS(totalSec);
       const k = kstNowDate();
       kstNowEl.textContent = `KST: ${k.getUTCFullYear()}-${String(k.getUTCMonth()+1).padStart(2,'0')}-${String(k.getUTCDate()).padStart(2,'0')} ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}:${String(k.getUTCSeconds()).padStart(2,'0')}`;
+      // Keep greetBtn always visible (per user request), but you can still auto-unhide at midnight logic if desired.
       if(diff <= 0){
-        greetBtn.classList.remove('btn-hidden');
-        greetBtn.removeAttribute('aria-hidden');
         countdownEl.textContent = "00:00:00";
       }
     }
@@ -141,11 +140,10 @@
       if(wishesRunning) return;
       wishesRunning = true;
 
-      // try to start music on user interaction (greet/replay)
+      // start music on user interaction (greet/replay)
       try { await bgMusic.play(); } catch(e) { /* ignore if blocked */ }
 
-      greetBtn.classList.add('btn-hidden');
-      greetBtn.setAttribute('aria-hidden','true');
+      // hide replay while running
       replayBtn.classList.add('btn-hidden');
 
       overlay.classList.add('show');
@@ -159,7 +157,7 @@
         return d;
       });
 
-      const WORD_DELAY = 420; // slower
+      const WORD_DELAY = 420; // slightly slower as requested
       const PARAGRAPH_PAUSE = 900;
 
       for(let pi=0; pi<WISHES_PARAGRAPHS.length; pi++){
@@ -193,7 +191,7 @@
       }
     }
 
-    // greet button available at midnight
+    // greet and replay handlers
     greetBtn.addEventListener('click', () => startWishesWordByWord(false));
     replayBtn.addEventListener('click', () => startWishesWordByWord(false));
 
